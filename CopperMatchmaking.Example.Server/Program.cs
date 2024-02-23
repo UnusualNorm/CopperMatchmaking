@@ -1,4 +1,4 @@
-﻿using CopperMatchmaking.Data;
+using CopperMatchmaking.Data;
 using CopperMatchmaking.Server;
 
 namespace CopperMatchmaking.Example.Server;
@@ -7,16 +7,17 @@ public static class Program
 {
     public static void Main()
     {
-        var server = new MatchmakerServer(4);
-        server.RegisterRanks(
-            new Rank("Unranked", RankIds.Unranked),
-            new Rank("Bronze", RankIds.Bronze),
-            new Rank("Silver", RankIds.Silver),
-            new Rank("Gold", RankIds.Gold),
-            new Rank("Platinum", RankIds.Platinum),
-            new Rank("Diamond", RankIds.Diamond),
-            new Rank("Master", RankIds.Master),
-            new Rank("Chaos", RankIds.Chaos));
+        byte lobbySize = byte.Parse(Environment.GetEnvironmentVariable("LOBBY_SIZE") ?? "4");
+
+        string[] rankNames = (Environment.GetEnvironmentVariable("RANKS") ?? "Unranked,Bronze,Silver,Gold,Platinum,Diamond,Master,Chaos").Split(',');
+        var ranks = new Rank[rankNames.Length];
+        for (int i = 0; i < rankNames.Length; i++)
+        {
+            ranks[i] = new Rank(rankNames[i], (byte)i);
+        }
+
+        var server = new MatchmakerServer(lobbySize);
+        server.RegisterRanks(ranks);
 
         while (true)
         {
