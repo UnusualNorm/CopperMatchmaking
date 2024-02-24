@@ -49,7 +49,7 @@ namespace CopperMatchmaking.Client
             Client = new RiptideClient(new TcpClient());
             ShouldUpdate = true;
             
-            Client.Connect($"{ip}:7777", 5, 0, null, false);
+            Client.Connect(ip, 5, 0, null, false);
             Client.Connection.CanQualityDisconnect = false;
             
             Client.Connected += ClientConnectedHandler;
