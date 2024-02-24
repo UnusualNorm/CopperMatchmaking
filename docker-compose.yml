@@ -5,5 +5,5 @@ services:
     ports:
       - 7777:7777
     environment:
-      LOBBY_SIZE: 2
+      LOBBY_SIZE: 4
       RANKS: Unranked,Bronze,Silver,Gold,Platinum,Diamond,Master,Chaos
