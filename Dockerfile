@@ -12,4 +12,5 @@ RUN dotnet publish -c Release -o out CopperMatchmaking.Example.Server
 FROM mcr.microsoft.com/dotnet/aspnet:6.0
 WORKDIR /App
 COPY --from=build-env /App/out .
+EXPOSE 7777
 ENTRYPOINT ["dotnet", "CopperMatchmaking.Example.Server.dll"]
