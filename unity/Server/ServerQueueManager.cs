@@ -14,9 +14,7 @@ namespace CopperMatchmaking.Server
 
         private readonly ushort lobbySize;
 
-#nullable enable
-        internal Action<List<ConnectedClient>>? PotentialLobbyFound;
-#nullable disable
+        internal Action<List<ConnectedClient>, byte>? PotentialLobbyFound;
 
         public ServerQueueManager(ushort lobbySize)
         {
@@ -44,7 +42,7 @@ namespace CopperMatchmaking.Server
                 var connectedClients = queue.Value.Take(lobbySize).ToList();
                 connectedClients.ForEach(client => queue.Value.Remove(client));
 
-                PotentialLobbyFound?.Invoke(connectedClients.ToList());
+                PotentialLobbyFound?.Invoke(connectedClients.ToList(), queue.Key);
             }
         }
 
@@ -78,6 +76,12 @@ namespace CopperMatchmaking.Server
                     rankQueues[(byte)i].RemoveAt(ii);
                 }
             }
+        }
+
+        internal void ReturnLobby(CreatedLobby lobby)
+        {
+            lobby.Skip(1).ToList().ForEach(RegisterPlayer);
+            RegisterPlayer(lobby[0]);
         }
     }
 }

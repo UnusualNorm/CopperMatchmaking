@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using CopperMatchmaking.Data;
 using CopperMatchmaking.Info;
+using CopperMatchmaking.Util;
 using Riptide;
 using Riptide.Transports.Tcp;
 using Riptide.Utils;
@@ -12,38 +13,41 @@ namespace CopperMatchmaking.Server
     /// <summary>
     /// 
     /// </summary>
-    public class MatchmakerServer
+    public class MatchmakerServer : Singleton<MatchmakerServer>
     {
-        internal static MatchmakerServer Instance = null!;
-
         internal readonly RiptideServer Server = null!;
 
         internal readonly List<Rank> Ranks = new List<Rank>();
 
-        private readonly ServerQueueManager queueManager = null!;
+        internal readonly ServerQueueManager QueueManager = null!;
         internal readonly ServerLobbyManager LobbyManager = null!;
-        private readonly IServerHandler handler;
+        internal readonly ServerHandler Handler;
 
         /// <summary>
-        /// Base Constructor with a pre-made ServerHandler
+        /// Time in seconds that the host of a lobby has to send the join code for said lobby 
+        /// </summary>
+        public float LobbyTimeoutTime = 5;
+        
+        /// <summary>
+        /// Base Constructor with a pre-made <see cref="ServerHandler"/>
         /// </summary>
         /// <param name="lobbySize">Size of a lobby. Must be an even number</param>
         /// <param name="maxClients">Max amount of clients that can connect to the matchmaking server</param>
-        public MatchmakerServer(byte lobbySize = 10, ushort maxClients = 65534) : this(new BasicServerHandler(), lobbySize, maxClients)
+        public MatchmakerServer(byte lobbySize = 10, ushort maxClients = 65534) : this(new ServerHandler(), lobbySize, maxClients)
         {
         }
 
         /// <summary>
         /// Base Constructor
         /// </summary>
-        /// <param name="handler">Server handler</param>
+        /// <param name="handler"><see cref="ServerHandler"/></param>
         /// <param name="lobbySize">Size of a lobby. Must be an even number</param>
         /// <param name="maxClients">Max amount of clients that can connect to the matchmaking server</param>
-        public MatchmakerServer(IServerHandler handler, byte lobbySize = 10, ushort maxClients = 65534)
+        public MatchmakerServer(ServerHandler handler, byte lobbySize = 10, ushort maxClients = 65534)
         {
             // values
-            this.handler = handler;
-            Instance = this;
+            this.Handler = handler;
+            SetInstance(this);
 
             // checks
             if (lobbySize % 2 != 0)
@@ -61,20 +65,22 @@ namespace CopperMatchmaking.Server
             Server.Start(7777, maxClients, 0, false);
 
             // matchmaking 
-            queueManager = new ServerQueueManager(lobbySize);
+            QueueManager = new ServerQueueManager(lobbySize);
             LobbyManager = new ServerLobbyManager(this);
 
             // actions
-            queueManager.PotentialLobbyFound += LobbyManager.PotentialLobbyFound;
-            Server.ClientDisconnected += queueManager.ClientDisconnected;
+            QueueManager.PotentialLobbyFound += LobbyManager.PotentialLobbyFound;
+            Server.ClientDisconnected += QueueManager.ClientDisconnected;
             Server.MessageReceived += ServerMessageHandlers.ServerReceivedMessageHandler;
         }
         
         ~MatchmakerServer()
         {
-            queueManager.PotentialLobbyFound -= LobbyManager.PotentialLobbyFound;
-            Server.ClientDisconnected -= queueManager.ClientDisconnected;
+            QueueManager.PotentialLobbyFound -= LobbyManager.PotentialLobbyFound;
+            Server.ClientDisconnected -= QueueManager.ClientDisconnected;
             Server.MessageReceived -= ServerMessageHandlers.ServerReceivedMessageHandler;
+                
+            SetInstance(null);
         }
 
         /// <summary>
@@ -83,7 +89,8 @@ namespace CopperMatchmaking.Server
         public void Update()
         {
             // internal crap
-            queueManager.CheckForLobbies();
+            LobbyManager.TimeoutCheck();
+            QueueManager.CheckForLobbies();
 
             // networking
             Server.Update();
@@ -103,20 +110,20 @@ namespace CopperMatchmaking.Server
             Log.Info(
                 $"Registering {targetRanks.Length} new ranks, bringing the total to {Ranks.Count}. | Ranks: {Ranks.Aggregate("", (current, rank) => current + $"{rank.DisplayName}[{rank.Id}], ")}");
 
-            queueManager.RegisterRanks(Ranks);
+            QueueManager.RegisterRanks(Ranks);
         }
 
         internal void RegisterClient(ConnectedClient client)
         {
             Log.Info($"New Client Joined | Rank: {client.Rank.DisplayName} | ConnectionId: {client.ConnectionId}");
 
-            if (!handler.VerifyPlayer(client))
+            if (!Handler.VerifyPlayer(client))
             {
                 Log.Info($"Couldn't verify client. Disconnecting");
                 return;
             }
 
-            queueManager.RegisterPlayer(client);
+            QueueManager.RegisterPlayer(client);
         }
 
         internal void SendMessage(Message message, ushort toClient, bool shouldRelease = true) => Server.Send(message, toClient, shouldRelease);

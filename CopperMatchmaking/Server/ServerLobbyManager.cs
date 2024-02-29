@@ -1,3 +1,5 @@
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using CopperMatchmaking.Data;
@@ -10,29 +12,39 @@ namespace CopperMatchmaking.Server
     {
         private readonly MatchmakerServer server;
 
-        private readonly Dictionary<uint, List<ConnectedClient>> lobbies = new Dictionary<uint, List<ConnectedClient>>();
+        private readonly Dictionary<uint, CreatedLobby> lobbies = new Dictionary<uint, CreatedLobby>();
 
         internal ServerLobbyManager(MatchmakerServer server)
         {
             this.server = server;
         }
 
-        internal void PotentialLobbyFound(List<ConnectedClient> connectedClients)
+        internal void PotentialLobbyFound(List<ConnectedClient> connectedClients, byte rank)
         {
-            var lobbyId = connectedClients[0].ConnectionId;
+            var host = connectedClients[server.Handler.ChooseLobbyHost(connectedClients)];
+            
+            var lobbyId = host.ConnectionId;
 
-            lobbies.Add(lobbyId, connectedClients);
+            lobbies.Add(lobbyId, new CreatedLobby(lobbyId, connectedClients, rank));
 
-            Log.Info($"Potential Lobby Found. Creating lobby with ConnectedClient[{connectedClients[0].ConnectionId}] as host.");
+            Log.Info($"Potential Lobby Found. Creating lobby with ConnectedClient[{host.ConnectionId}] as host.");
 
             var message = Message.Create(MessageSendMode.Reliable, MessageIds.ServerRequestedClientToHost);
             message.Add(lobbyId);
 
-            server.SendMessage(message, connectedClients[0]);
+            server.SendMessage(message, host);
+            
+            server.Handler.LobbyCreated(lobbies[lobbyId]);
         }
 
         internal void HandleClientHostResponse(uint lobbyId, string hostedLobbyId)
         {
+            if (!lobbies.ContainsKey(lobbyId))
+            {
+                Log.Info($"Client has seen join code for lobby {lobbyId}. However there is no lobby with id '{lobbyId}'. It might have timed out or the client is lying.");
+                return;
+            }
+            
             Log.Info($"ConnectedClient[{lobbies[lobbyId][0].ConnectionId}] has responded with the join code of {hostedLobbyId}. Telling all clients of their lobby, and disconnecting them from the matchmaking server.");
 
             foreach (var client in lobbies[lobbyId].Where(client => !(lobbies[lobbyId].IndexOf(client) is 0)))
@@ -48,6 +60,17 @@ namespace CopperMatchmaking.Server
             }
 
             lobbies.Remove(lobbyId);
+        }
+
+        internal void TimeoutCheck()
+        {
+            foreach (var lobby in lobbies.Values.ToList().Where(lobby => (DateTime.Now - lobby.LobbyCreationTime).Seconds >= server.LobbyTimeoutTime))
+            {
+                Log.Info($"The host of lobby {lobby.LobbyId} has taken too long to send the join code. Timing out the lobby.");
+                lobbies.Remove(lobby.LobbyId);
+                
+                server.QueueManager.ReturnLobby(lobby);
+            }
         }
     }
 }
